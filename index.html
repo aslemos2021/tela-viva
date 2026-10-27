@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tela Viva</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+<div class="app">
+  <header class="topo">
+    <div class="marca">
+      <svg viewBox="0 0 24 24" aria-hidden="true" class="marca-glifo">
+        <rect x="2" y="2" width="20" height="20" rx="2"></rect>
+        <path d="M6 16 L12 6 L18 16 Z"></path>
+      </svg>
+      <span>Tela Viva</span>
+    </div>
+    <div class="topo-meio" id="topoMeio"></div>
+    <nav class="abas" id="abas" aria-label="Seções">
+      <button type="button" data-aba="tela" aria-current="page">Tela</button>
+      <button type="button" data-aba="camadas">Camadas</button>
+      <button type="button" data-aba="firmware">Firmware</button>
+    </nav>
+  </header>
+
+  <main class="principal">
+    <section class="vista vista-tela" id="vista-tela">
+      <div class="palco">
+        <div class="palco-barra">
+          <div class="palco-info" id="palcoInfo"></div>
+          <div class="palco-ferramentas">
+            <span class="coords" id="coords" aria-live="off"></span>
+            <button type="button" class="botao-icone" id="zMenos" title="Afastar" aria-label="Afastar">−</button>
+            <output class="zoom-valor" id="zoomValor">6×</output>
+            <button type="button" class="botao-icone" id="zMais" title="Aproximar" aria-label="Aproximar">+</button>
+            <button type="button" class="botao-icone botao-texto-curto" id="zAjustar" title="Ver a tela inteira">Inteira</button>
+            <button type="button" class="botao-icone botao-texto-curto" id="zPeca" title="Centralizar na peça">Peça</button>
+            <label class="chave"><input type="checkbox" id="chaveGrade" checked> Grade</label>
+          </div>
+        </div>
+        <div class="tela-caixa" id="telaCaixa">
+          <canvas id="canvas" class="canvas" role="img" aria-label="Tela de desenho"></canvas>
+          <div class="selo-previa" id="seloPrevia" hidden>Prévia</div>
+          <canvas id="minimapa" class="minimapa" aria-hidden="true"></canvas>
+          <div class="falas" id="falas" aria-live="polite"></div>
+          <div class="ligacao" id="ligacao" role="status" hidden></div>
+        </div>
+      </div>
+      <aside class="lateral" id="lateral"></aside>
+    </section>
+    <section class="vista vista-folha" id="vista-camadas" hidden></section>
+    <section class="vista vista-folha" id="vista-firmware" hidden></section>
+  </main>
+</div>
+
+<script src="motor/tela.js"></script>
+<script src="motor/caneta.js"></script>
+<script src="motor/exemplos.js"></script>
+<script src="interface/desenho.js"></script>
+<script src="interface/app.js"></script>
+</body>
+</html>
