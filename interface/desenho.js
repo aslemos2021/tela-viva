@@ -107,41 +107,42 @@ var TELA = globalThis.TELA = globalThis.TELA || {};
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       const estilo = getComputedStyle(document.documentElement);
       const mesa = estilo.getPropertyValue('--mesa').trim() || '#f7f9fb';
-      const buracoCor = estilo.getPropertyValue('--buraco').trim() || '#2a2f36';
       ctx.fillStyle = mesa;
       ctx.fillRect(0, 0, w, h);
 
       montarBase(e, op);
       const o = v.paraTela(0, 0);
       const W = e.larg * v.zoom, H = e.alt * v.zoom;
-      // sombra da tela
-      ctx.fillStyle = 'rgba(0,0,0,0.10)';
-      ctx.fillRect(o.x + 3, o.y + 3, W, H);
-      // buracos: o "nada" por baixo
-      ctx.fillStyle = buracoCor;
-      ctx.fillRect(o.x, o.y, W, H);
+      // A tela é como um papel sobre a mesa: a sombra sai do próprio desenho,
+      // então os buracos (células cavadas, transparentes) mostram a mesa por
+      // baixo, como um recorte, com a sombra da borda caindo dentro deles.
       ctx.imageSmoothingEnabled = false;
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,0.22)';
+      ctx.shadowBlur = Math.max(3, Math.min(10, v.zoom * 0.8));
+      ctx.shadowOffsetX = Math.max(1, Math.min(4, v.zoom * 0.3));
+      ctx.shadowOffsetY = ctx.shadowOffsetX;
       ctx.drawImage(v.base, 0, 0, e.larg, e.alt, o.x, o.y, W, H);
+      ctx.restore();
 
-      // textura dos buracos (só quando o zoom permite)
-      if (v.zoom >= 4) {
-        ctx.strokeStyle = 'rgba(255,255,255,0.18)';
-        ctx.lineWidth = 1;
-        const c0 = v.paraCelula(0, 0), c1 = v.paraCelula(w, h);
-        for (let y = Math.max(0, c0.y); y <= Math.min(e.alt - 1, c1.y); y++) {
-          for (let x = Math.max(0, c0.x); x <= Math.min(e.larg - 1, c1.x); x++) {
-            if (!e.buraco[y * e.larg + x]) continue;
-            const p = v.paraTela(x, y);
-            ctx.beginPath();
-            ctx.moveTo(p.x, p.y + v.zoom);
-            ctx.lineTo(p.x + v.zoom, p.y);
-            ctx.stroke();
-          }
+      // células cavadas visíveis, para a grade não passar por cima delas
+      const c0b = v.paraCelula(0, 0), c1b = v.paraCelula(w, h);
+      const buracos = [];
+      for (let y = Math.max(0, c0b.y); y <= Math.min(e.alt - 1, c1b.y); y++) {
+        for (let x = Math.max(0, c0b.x); x <= Math.min(e.larg - 1, c1b.x); x++) {
+          if (e.buraco[y * e.larg + x]) buracos.push(v.paraTela(x, y));
         }
       }
 
-      // grade
+      // grade (só sobre o papel, não sobre os recortes)
       if (v.grade && v.zoom >= 5) {
+        ctx.save();
+        if (buracos.length) {
+          const recorte = new Path2D();
+          recorte.rect(o.x, o.y, W, H);
+          for (const p of buracos) recorte.rect(p.x, p.y, v.zoom, v.zoom);
+          ctx.clip(recorte, 'evenodd');
+        }
         ctx.strokeStyle = v.zoom >= 10 ? 'rgba(0,0,0,0.13)' : 'rgba(0,0,0,0.07)';
         ctx.lineWidth = 1;
         ctx.beginPath();
@@ -155,6 +156,7 @@ var TELA = globalThis.TELA = globalThis.TELA || {};
           ctx.moveTo(Math.max(0, o.x), py); ctx.lineTo(Math.min(w, o.x + W), py);
         }
         ctx.stroke();
+        ctx.restore();
       }
 
       // células tocadas pela prévia: um véu claro e borda
@@ -251,7 +253,7 @@ var TELA = globalThis.TELA = globalThis.TELA || {};
       const ctx = minimapa.getContext('2d');
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.imageSmoothingEnabled = false;
-      ctx.fillStyle = '#2a2f36';
+      ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--papel').trim() || '#e8ecf0';
       ctx.fillRect(0, 0, mw, mh);
       ctx.drawImage(v.base, 0, 0, e.larg, e.alt, 0, 0, mw, mh);
       const esc = mw / e.larg;
@@ -289,7 +291,7 @@ var TELA = globalThis.TELA = globalThis.TELA || {};
       d[k] = (n >> 16) & 255; d[k + 1] = (n >> 8) & 255; d[k + 2] = n & 255; d[k + 3] = 255;
     }
     bctx.putImageData(img, 0, 0);
-    ctx.fillStyle = '#2a2f36'; ctx.fillRect(0, 0, c.width, c.height);
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--mesa').trim() || '#f7f9fb'; ctx.fillRect(0, 0, c.width, c.height);
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(b, 0, 0, c.width, c.height);
     return c.toDataURL();
