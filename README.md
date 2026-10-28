@@ -46,6 +46,17 @@ ferramentas/montar.mjs      gera dist/ e FIRMWARE.md
 FIRMWARE.md                 a documentação do firmware (gerada; é o que a IA lê)
 ```
 
+## Trabalhar no WSL e rodar no Windows
+
+Se o clone do repositório fica no WSL e a pasta usada na aula fica no Windows (no Dropbox, por exemplo), rode no WSL:
+
+```bash
+ferramentas/espelhar-no-windows.sh        # copia para a pasta do Windows
+ferramentas/espelhar-no-windows.sh -n     # só mostra o que faria
+```
+
+O script copia o que mudou e apaga, no Windows, o que foi apagado no WSL. Ele nunca copia o `.git` e nunca mexe na chave, na tela coletiva nem no registro do servidor. O destino padrão está no começo do script; para outro lugar, passe o caminho: `ferramentas/espelhar-no-windows.sh 'C:\outra\pasta'`. Precisa do `rsync` (`sudo apt install rsync`).
+
 ## O ciclo de um plano
 
 1. A dupla escreve o pedido e clica em **Pedir à IA** (Ctrl+Enter também serve).
