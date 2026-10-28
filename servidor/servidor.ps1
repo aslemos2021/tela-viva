@@ -22,13 +22,15 @@ $raiz = Split-Path -Parent $pasta
 $grupo = 'Tela Viva - servidor'
 
 # ------------------------------------------------------------ configuração
-$config = @{ porta = 8000; modelo = 'claude-sonnet-5-5'; maxTokens = 2500; chave = 'chave.txt'; registro = 'registro.jsonl' }
+$config = @{ porta = 8000; modelo = 'claude-sonnet-5-5'; maxTokens = 16000; chave = 'chave.txt'; registro = 'registro.jsonl' }
 $arqConfig = Join-Path $pasta 'config.json'
 if (Test-Path $arqConfig) {
     $lido = Get-Content $arqConfig -Raw -Encoding UTF8 | ConvertFrom-Json
     foreach ($p in $lido.PSObject.Properties) { $config[$p.Name] = $p.Value }
 }
 if ($Porta -gt 0) { $config.porta = $Porta }
+# um limite baixo corta a resposta no meio (planos complexos são longos)
+if ([int]$config.maxTokens -lt 8000) { $config.maxTokens = 16000 }
 $Porta = [int]$config.porta
 
 $arqChave = Join-Path $pasta $config.chave
@@ -73,7 +75,7 @@ catch { $regraOk = $false; $erroRegra = $_.Exception.Message }
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 Add-Type -AssemblyName System.Net.Http
 $http = New-Object System.Net.Http.HttpClient
-$http.Timeout = [TimeSpan]::FromSeconds(90)
+$http.Timeout = [TimeSpan]::FromSeconds(180)
 
 function Instrucao {
     $texto = if (Test-Path $arqInstrucao) { Get-Content $arqInstrucao -Raw -Encoding UTF8 } else { 'Traduza o pedido em um plano JavaScript usando só o firmware. Responda em JSON com titulo, entendi, escolhas, codigo, alternativas, pergunta.' }
@@ -89,14 +91,27 @@ function Registrar($obj) {
     } catch { }
 }
 
-# Extrai o JSON da resposta da IA, mesmo que venha com cercas ou texto em volta.
-function ExtrairPlano([string]$texto) {
-    $t = $texto.Trim()
-    $t = [regex]::Replace($t, '^```(?:json)?\s*', '')
-    $t = [regex]::Replace($t, '\s*```$', '')
-    $i = $t.IndexOf('{'); $j = $t.LastIndexOf('}')
-    if ($i -lt 0 -or $j -le $i) { throw 'a resposta da IA não trouxe um objeto JSON' }
-    $obj = $t.Substring($i, $j - $i + 1) | ConvertFrom-Json
+# A IA entrega o plano chamando a ferramenta "entregar_plano"; assim o JSON
+# é montado pela própria API e não pode vir malformado. Se ela responder em
+# texto, tentamos achar o objeto JSON no texto.
+$ferramenta = [ordered]@{
+    name = 'entregar_plano'
+    description = 'Entrega o plano traduzido para a equipe. Use sempre esta ferramenta para responder.'
+    input_schema = [ordered]@{
+        type = 'object'
+        properties = [ordered]@{
+            titulo = @{ type = 'string'; description = 'nome curto do plano, até 6 palavras' }
+            entendi = @{ type = 'string'; description = 'uma ou duas frases dizendo o que o plano faz' }
+            escolhas = @{ type = 'array'; items = @{ type = 'string' }; description = 'decisões tomadas onde o pedido não dizia' }
+            codigo = @{ type = 'string'; description = 'o plano em JavaScript, usando só o firmware' }
+            alternativas = @{ type = 'array'; items = @{ type = 'string' }; description = 'outras leituras, escritas como pedidos' }
+            pergunta = @{ type = 'string'; description = 'uma pergunta, se houver ambiguidade grande; senão vazio' }
+        }
+        required = @('titulo', 'entendi', 'escolhas', 'codigo', 'alternativas', 'pergunta')
+    }
+}
+
+function NormalizarPlano($obj) {
     $plano = [ordered]@{
         titulo = [string]$obj.titulo; entendi = [string]$obj.entendi; codigo = [string]$obj.codigo; pergunta = [string]$obj.pergunta
         escolhas = @(); alternativas = @()
@@ -104,6 +119,15 @@ function ExtrairPlano([string]$texto) {
     if ($obj.escolhas) { $plano.escolhas = @($obj.escolhas | ForEach-Object { [string]$_ }) }
     if ($obj.alternativas) { $plano.alternativas = @($obj.alternativas | ForEach-Object { [string]$_ }) }
     return $plano
+}
+
+function ExtrairPlanoDoTexto([string]$texto) {
+    $t = $texto.Trim()
+    $t = [regex]::Replace($t, '^```(?:json)?\s*', '')
+    $t = [regex]::Replace($t, '\s*```$', '')
+    $i = $t.IndexOf('{'); $j = $t.LastIndexOf('}')
+    if ($i -lt 0 -or $j -le $i) { return $null }
+    try { return (NormalizarPlano ($t.Substring($i, $j - $i + 1) | ConvertFrom-Json)) } catch { return $null }
 }
 
 function MontarMensagem($pedido) {
@@ -119,19 +143,22 @@ function MontarMensagem($pedido) {
 }
 
 # Começa a chamada à API sem esperar por ela; o laço principal recolhe a resposta.
-function IniciarTraducao($ctx, $pedido) {
+function IniciarTraducao($ctx, $pedido, [int]$tentativa = 1) {
+    $mensagem = MontarMensagem $pedido
+    if ($tentativa -gt 1) { $mensagem += "`n`nATENÇÃO: a tentativa anterior não entregou o plano. Seja mais econômica: código curto, com laços, e entregue pela ferramenta entregar_plano." }
     $corpo = [ordered]@{
         model = $config.modelo; max_tokens = [int]$config.maxTokens
         system = (Instrucao)
-        messages = @(@{ role = 'user'; content = (MontarMensagem $pedido) })
+        tools = @($ferramenta)
+        messages = @(@{ role = 'user'; content = $mensagem })
     }
-    $json = ConvertTo-Json -InputObject $corpo -Depth 6
+    $json = ConvertTo-Json -InputObject $corpo -Depth 12
     $req = New-Object System.Net.Http.HttpRequestMessage ([System.Net.Http.HttpMethod]::Post, 'https://api.anthropic.com/v1/messages')
     $req.Headers.Add('x-api-key', $chave)
     $req.Headers.Add('anthropic-version', '2023-06-01')
     $req.Content = New-Object System.Net.Http.StringContent ($json, [Text.Encoding]::UTF8, 'application/json')
     $tarefa = $http.SendAsync($req)
-    return [pscustomobject]@{ ctx = $ctx; tarefa = $tarefa; pedido = $pedido; inicio = Get-Date; ip = $ctx.Request.RemoteEndPoint.Address.ToString() }
+    return [pscustomobject]@{ ctx = $ctx; tarefa = $tarefa; pedido = $pedido; inicio = Get-Date; ip = $ctx.Request.RemoteEndPoint.Address.ToString(); tentativa = $tentativa }
 }
 
 function ConcluirTraducao($t) {
@@ -144,10 +171,24 @@ function ConcluirTraducao($t) {
             throw "a API respondeu $([int]$resp.StatusCode): $detalhe"
         }
         $dados = $texto | ConvertFrom-Json
+        $plano = $null
+        $uso = @($dados.content | Where-Object { $_.type -eq 'tool_use' -and $_.name -eq 'entregar_plano' })
+        if ($uso.Count) { $plano = NormalizarPlano $uso[0].input }
         $conteudo = ($dados.content | Where-Object { $_.type -eq 'text' } | ForEach-Object { $_.text }) -join "`n"
-        $plano = ExtrairPlano $conteudo
+        if (-not $plano) { $plano = ExtrairPlanoDoTexto $conteudo }
+        if (-not $plano) {
+            $motivo = if ($dados.stop_reason -eq 'max_tokens') { 'a resposta passou do limite de tamanho e foi cortada' } else { 'a resposta não trouxe o plano' }
+            Registrar ([pscustomobject]@{ evento = 'sem-plano'; ip = $t.ip; pedido = $t.pedido.pedido; tentativa = $t.tentativa; parada = $dados.stop_reason; tokens = $dados.usage; texto = (Recortar $conteudo 4000) })
+            if ($t.tentativa -lt 2) {
+                Write-Host ('  {0}  {1,-15} {2}; tentando de novo' -f (Get-Date -Format 'HH:mm:ss'), $t.ip, $motivo) -ForegroundColor DarkYellow
+                [void]$pendentes.Add((IniciarTraducao $ctx $t.pedido 2))
+                return
+            }
+            if ($dados.stop_reason -eq 'max_tokens') { throw 'O plano ficou longo demais e foi cortado duas vezes. Tente dividir o pedido em partes (por exemplo, primeiro a janela, depois o sol).' }
+            throw 'A IA não entregou o plano, mesmo na segunda tentativa. Tente reformular o pedido.'
+        }
         $segundos = [math]::Round(((Get-Date) - $t.inicio).TotalSeconds, 1)
-        Registrar ([pscustomobject]@{ evento = 'traduzido'; ip = $t.ip; peca = $t.pedido.contexto.peca.nome; pedido = $t.pedido.pedido; plano = $plano; modelo = $config.modelo; segundos = $segundos; tokens = $dados.usage })
+        Registrar ([pscustomobject]@{ evento = 'traduzido'; ip = $t.ip; peca = $t.pedido.contexto.peca.nome; pedido = $t.pedido.pedido; plano = $plano; modelo = $config.modelo; segundos = $segundos; tokens = $dados.usage; tentativa = $t.tentativa; via = $(if ($uso.Count) { 'ferramenta' } else { 'texto' }) })
         Write-Host ('  {0}  {1,-15} {2,-10} {3}s  "{4}" -> {5}' -f (Get-Date -Format 'HH:mm:ss'), $t.ip, $t.pedido.contexto.peca.nome, $segundos, (Recortar $t.pedido.pedido 48), $plano.titulo) -ForegroundColor Green
         Responder $ctx 200 'application/json; charset=utf-8' (ConvertTo-Json -InputObject ([ordered]@{ ok = $true; plano = $plano }) -Depth 5 -Compress)
     } catch {
@@ -296,7 +337,7 @@ function Atender($ctx) {
     elseif ($req.HttpMethod -eq 'POST' -and $caminho -eq '/coletivo/entrar') {
         $dados = $null; try { $dados = (LerCorpo $req) | ConvertFrom-Json } catch { }
         $peca = if ($dados) { Entrar $dados.nome } else { $null }
-        if (-not $peca) { Responder $ctx 400 'application/json; charset=utf-8' '{"ok":false,"erro":"a dupla precisa de um nome"}'; return }
+        if (-not $peca) { Responder $ctx 400 'application/json; charset=utf-8' '{"ok":false,"erro":"a equipe precisa de um nome"}'; return }
         Write-Host ('  {0}  {1,-15} entrou na tela coletiva como "{2}"' -f (Get-Date -Format 'HH:mm:ss'), $ip, $peca.nome) -ForegroundColor Magenta
         Registrar ([pscustomobject]@{ evento = 'entrou'; ip = $ip; peca = $peca.nome })
         Responder $ctx 200 'application/json; charset=utf-8' (ConvertTo-Json -InputObject @{ ok = $true; peca = $peca; versao = $coletivo.versao } -Depth 4 -Compress)

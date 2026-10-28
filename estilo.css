@@ -695,3 +695,15 @@ h1, h2, h3 { font-family: var(--fonte-display); text-wrap: balance; margin: 0; }
 .modo-projetor .cartao-grande .codigo { font-size: 0.95rem; }
 .modo-projetor .vista-tela { grid-template-columns: minmax(0, 1fr) minmax(380px, 520px); }
 .modo-projetor .palco-ferramentas .chave, .modo-projetor .coords { display: none; }
+
+/* tela inteira: só a imagem */
+.modo-projetor .botao-tela-cheia { background: var(--tinta); color: var(--mesa); border-color: var(--tinta); }
+body.tela-cheia .topo, body.tela-cheia .lateral, body.tela-cheia .palco-barra { display: none; }
+body.tela-cheia .tela-caixa { position: fixed; inset: 0; z-index: 50; border: 0; border-radius: 0; background: var(--papel); }
+.tela-caixa:fullscreen { border: 0; border-radius: 0; background: var(--papel); }
+body.tela-cheia .minimapa, body.tela-cheia .selo-previa { display: none; }
+.legenda { position: absolute; left: 16px; bottom: 16px; display: flex; align-items: center; gap: 10px; padding: 8px 14px; border-radius: 12px; background: color-mix(in srgb, var(--mesa) 88%, transparent); box-shadow: 0 2px 10px rgba(0,0,0,0.18); max-width: 70%; }
+.legenda span { display: flex; flex-direction: column; line-height: 1.2; min-width: 0; }
+.legenda b { font-family: var(--fonte-display); font-size: 1.15rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.legenda small { color: var(--tinta-2); }
+body.tela-cheia .tela-caixa .botao-sair { display: inline-flex; }

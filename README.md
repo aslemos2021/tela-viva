@@ -10,21 +10,21 @@ Há dois modos. No **individual**, cada computador tem a sua tela. No **coletivo
 2. Dois cliques em `servidor/iniciar.bat`. O Windows pede permissão de administrador para abrir a porta no firewall; a regra é removida ao sair.
 3. A janela mostra os endereços:
    - `http://10.x.x.x:8000` — tela individual;
-   - `http://10.x.x.x:8000/?modo=coletivo` — tela coletiva (a dupla dá um nome ao entrar; o mesmo nome recupera a mesma peça);
+   - `http://10.x.x.x:8000/?modo=coletivo` — tela coletiva (a equipe dá um nome ao entrar; o mesmo nome recupera a mesma peça);
    - `http://localhost:8000/?modo=projetor` — o projetor, que abre sozinho no computador do professor.
 4. Para encerrar: Ctrl+C na janela.
 
 ## O modo coletivo
 
 - A tela coletiva fica em `servidor/coletivo.json` e sobrevive a reinícios do servidor. Tamanho em `config.json` (`largura`, `altura`; padrão 200 × 120).
-- Cada dupla faz o pedido e vê a prévia na sua máquina, sobre a tela coletiva como ela está naquele momento. "Enviar à tela coletiva" acrescenta a camada; o projetor e todas as duplas recebem a tela nova em poucos segundos. No projetor, a última camada chega com o contorno em vermelho por alguns segundos, com o pedido, o "entendi" e o código ao lado.
-- As peças começam espalhadas numa malha e cada uma só obedece aos planos da própria dupla. A superfície é comum: tinta e buracos de uma dupla valem para todas.
-- Uma dupla só pode remover as próprias camadas. Do computador do professor (projetor, ou qualquer aba aberta em `localhost`) dá para remover qualquer camada e zerar a tela (as peças ficam).
-- Se duas duplas enviam quase ao mesmo tempo, a ordem de chegada ao servidor decide quem fica por cima. A prévia de cada uma foi feita sem a camada da outra; é o momento de composição que vale discutir.
+- Cada equipe faz o pedido e vê a prévia na sua máquina, sobre a tela coletiva como ela está naquele momento. "Enviar à tela coletiva" acrescenta a camada; o projetor e todas as equipes recebem a tela nova em poucos segundos. No projetor, a última camada chega com o contorno em vermelho por alguns segundos, com o pedido, o "entendi" e o código ao lado. O botão **Tela inteira** (ou a tecla F) mostra só a imagem, ocupando o projetor inteiro, com uma legenda discreta da última camada; Esc volta. A tecla G liga e desliga a grade.
+- As peças começam espalhadas numa malha e cada uma só obedece aos planos da própria equipe. A superfície é comum: tinta e buracos de uma equipe valem para todas.
+- Uma equipe só pode remover as próprias camadas. Do computador do professor (projetor, ou qualquer aba aberta em `localhost`) dá para remover qualquer camada e zerar a tela (as peças ficam).
+- Se duas equipes enviam quase ao mesmo tempo, a ordem de chegada ao servidor decide quem fica por cima. A prévia de cada uma foi feita sem a camada da outra; é o momento de composição que vale discutir.
 
 Sem a chave, o servidor funciona do mesmo jeito, mas a página avisa que a IA está desligada e o código tem de ser escrito ou colado à mão.
 
-`servidor/config.json` define a porta, o modelo e o limite de tokens. `servidor/INSTRUCAO-IA.md` é a instrução que a IA recebe: pode ser editada entre uma aula e outra. `servidor/registro.jsonl` guarda todos os pedidos, traduções, aceites e remoções, uma linha por evento, para a discussão em aula.
+`servidor/config.json` define a porta, o modelo e o limite de tokens (16 000; abaixo de 8 000 o servidor sobe sozinho para 16 000, porque respostas cortadas não trazem o plano). `servidor/INSTRUCAO-IA.md` é a instrução que a IA recebe: pode ser editada entre uma aula e outra. `servidor/registro.jsonl` guarda todos os pedidos, traduções, aceites e remoções, uma linha por evento, para a discussão em aula.
 
 ## Como abrir sem servidor
 

@@ -219,7 +219,7 @@ var TELA = globalThis.TELA = globalThis.TELA || {};
     let h = '';
     if (!st.camadas.length) {
       h += `<section class="cartao"><header class="cartao-cabeca"><h2>Tela coletiva</h2></header>
-        <p>Nenhuma camada ainda. As duplas entram pelo endereço com <code>?modo=coletivo</code>; cada plano enviado aparece aqui.</p></section>`;
+        <p>Nenhuma camada ainda. As equipes entram pelo endereço com <code>?modo=coletivo</code>; cada plano enviado aparece aqui.</p></section>`;
     } else {
       h += cartaoCamadaHtml(ultimas[0], { grande: true });
       if (ultimas.length > 1) {
@@ -463,7 +463,40 @@ var TELA = globalThis.TELA = globalThis.TELA || {};
     else renderFirmware();
   }
 
+  // ---------------------------------------------------------------
+  // Tela inteira: só a imagem, ocupando a tela toda (projetor)
+  // ---------------------------------------------------------------
+  function telaCheia(ligar) {
+    const caixa = $('telaCaixa');
+    const agora = document.body.classList.contains('tela-cheia');
+    if (ligar === undefined) ligar = !agora;
+    document.body.classList.toggle('tela-cheia', ligar);
+    $('zTelaCheia').textContent = ligar ? 'Sair' : 'Tela inteira';
+    try {
+      if (ligar && !document.fullscreenElement && caixa.requestFullscreen) caixa.requestFullscreen().catch(() => { });
+      if (!ligar && document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => { });
+    } catch (e) { }
+    atualizarLegenda();
+    requestAnimationFrame(() => { A.vista.ajustar(A.previa ? A.previa.estado : e()); redesenhar(); });
+  }
+
+  function atualizarLegenda() {
+    const el = $('legenda');
+    if (!el) return;
+    const st = e();
+    const c = st && st.camadas[st.camadas.length - 1];
+    if (!document.body.classList.contains('tela-cheia') || !c) { el.hidden = true; return; }
+    const p = st.pecas[c.peca] || { nome: c.autor, cor: '#888' };
+    el.innerHTML = `${pastilha(p, 26)}<span><b>${esc(c.titulo || 'Plano')}</b><small>camada ${c.n} · ${esc(c.autor)}</small></span>`;
+    el.hidden = false;
+  }
+
   function ligarEventos() {
+    $('zTelaCheia').addEventListener('click', () => telaCheia());
+    document.addEventListener('fullscreenchange', () => {
+      if (!document.fullscreenElement && document.body.classList.contains('tela-cheia')) telaCheia(false);
+      else requestAnimationFrame(() => { A.vista.ajustar(A.previa ? A.previa.estado : e()); redesenhar(); });
+    });
     $('abas').addEventListener('click', ev => { const b = ev.target.closest('[data-aba]'); if (b) irPara(b.dataset.aba); });
     window.addEventListener('resize', () => redesenhar());
     $('chaveGrade').addEventListener('change', redesenhar);
@@ -595,6 +628,9 @@ var TELA = globalThis.TELA = globalThis.TELA || {};
     document.addEventListener('keydown', ev => {
       if (ev.target.closest('input, textarea, select')) return;
       if (A.aba !== 'tela') return;
+      if (ev.key === 'f' || ev.key === 'F') { telaCheia(); return; }
+      if (ev.key === 'g' || ev.key === 'G') { $('chaveGrade').checked = !$('chaveGrade').checked; redesenhar(); return; }
+      if (ev.key === 'Escape' && document.body.classList.contains('tela-cheia')) { telaCheia(false); return; }
       const passo = 40 / A.vista.zoom;
       if (ev.key === 'ArrowLeft') { A.vista.ox -= passo; redesenhar(); }
       else if (ev.key === 'ArrowRight') { A.vista.ox += passo; redesenhar(); }
@@ -641,7 +677,8 @@ var TELA = globalThis.TELA = globalThis.TELA || {};
         A.previa = pv;
       }
       renderTopo();
-      if (A.aba === 'tela') { renderLateral(); if (primeira) A.vista.ajustar(A.estado); redesenhar(); }
+      atualizarLegenda();
+      if (A.aba === 'tela') { renderLateral(); if (primeira || document.body.classList.contains('tela-cheia')) A.vista.ajustar(A.estado); redesenhar(); }
       else if (A.aba === 'camadas') renderCamadas();
       $('ligacao').hidden = true;
     } catch (erro) {
@@ -658,7 +695,7 @@ var TELA = globalThis.TELA = globalThis.TELA || {};
       try { nome = localStorage.getItem(CHAVE_DUPLA) || ''; } catch (e) { }
       const caixa = document.createElement('div');
       caixa.className = 'dialogo-fundo';
-      caixa.innerHTML = `<div class="dialogo-caixa" role="dialog" aria-modal="true"><h2>Quem é a dupla?</h2>
+      caixa.innerHTML = `<div class="dialogo-caixa" role="dialog" aria-modal="true"><h2>Qual é o nome da equipe?</h2>
         <p>O nome identifica a peça de vocês na tela coletiva. Se já entraram antes, usem o mesmo nome para recuperar a peça.</p>
         <input type="text" id="nomeDupla" class="campo-nome campo-nome-grande" maxlength="24" value="${esc(nome)}" placeholder="Ex.: Cometa">
         <div class="fila-botoes"><button type="button" class="botao botao-primario" id="entrarBotao">Entrar na tela</button></div></div>`;
