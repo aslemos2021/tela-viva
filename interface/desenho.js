@@ -198,6 +198,7 @@ var TELA = globalThis.TELA = globalThis.TELA || {};
       // peças
       for (const id of e.ordem) {
         const p = e.pecas[id];
+        if (p.ativa === false) continue;
         const c = v.paraTela(p.x + 0.5, p.y + 0.5);
         const r = Math.max(9, Math.min(16, v.zoom * 0.9));
         const a = (p.ang - 90) * Math.PI / 180;
@@ -258,6 +259,7 @@ var TELA = globalThis.TELA = globalThis.TELA || {};
       ctx.strokeRect(v.ox * esc, v.oy * esc, (w / v.zoom) * esc, (h / v.zoom) * esc);
       for (const id of e.ordem) {
         const p = e.pecas[id];
+        if (p.ativa === false) continue;
         ctx.beginPath(); ctx.arc((p.x + 0.5) * esc, (p.y + 0.5) * esc, 3, 0, Math.PI * 2);
         ctx.fillStyle = p.cor; ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.stroke();
       }

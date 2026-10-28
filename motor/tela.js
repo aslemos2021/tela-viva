@@ -120,6 +120,7 @@ var TELA = globalThis.TELA = globalThis.TELA || {};
       y: p.y !== undefined ? p.y : Math.floor(e.alt / 2),
       ang: p.ang || 0, px: 0, py: 0,
       caneta: true, tinta: p.tinta || '#1b1f24', espessura: 1,
+      ativa: p.ativa !== false,   // false: a equipe saiu da tela; as camadas dela continuam
       inicio: null
     };
     const q = e.pecas[id];

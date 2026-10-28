@@ -707,3 +707,9 @@ body.tela-cheia .minimapa, body.tela-cheia .selo-previa { display: none; }
 .legenda b { font-family: var(--fonte-display); font-size: 1.15rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .legenda small { color: var(--tinta-2); }
 body.tela-cheia .tela-caixa .botao-sair { display: inline-flex; }
+
+/* equipes no projetor */
+.lista-equipes li { flex-wrap: wrap; }
+.equipe-acoes { margin-left: auto; display: inline-flex; gap: 8px; }
+.equipe-fora { opacity: 0.55; }
+.cartao-fora { border-color: var(--depois); }
