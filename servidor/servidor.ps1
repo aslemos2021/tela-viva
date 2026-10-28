@@ -231,10 +231,17 @@ function Entrar($nome) {
     if ($nome.Length -gt 24) { $nome = $nome.Substring(0, 24) }
     if (-not $nome) { return $null }
     $existente = @($coletivo.pecas | Where-Object { $_.nome -eq $nome })
-    if ($existente.Count) { return $existente[0] }
+    if ($existente.Count) {
+        # uma equipe que tinha saído volta com a mesma peça, a mesma cor e as mesmas camadas
+        if ($existente[0].ativa -eq $false) { $existente[0].ativa = $true; $coletivo.versao++; GuardarColetivo }
+        return $existente[0]
+    }
     $i = $coletivo.pecas.Count
     $pos = PosicaoInicial $i
-    $peca = [pscustomobject]@{ id = ('p' + ($i + 1)); nome = $nome; cor = $PALETA[$i % $PALETA.Count]; x = $pos.x; y = $pos.y }
+    # o número da peça nunca se repete, mesmo depois de uma equipe ser removida
+    $maior = 0
+    foreach ($p in $coletivo.pecas) { $k = 0; if ([int]::TryParse(([string]$p.id).TrimStart('p'), [ref]$k) -and $k -gt $maior) { $maior = $k } }
+    $peca = [pscustomobject]@{ id = ('p' + ($maior + 1)); nome = $nome; cor = $PALETA[$maior % $PALETA.Count]; x = $pos.x; y = $pos.y; ativa = $true }
     $coletivo.pecas = @($coletivo.pecas) + @($peca)
     $coletivo.versao++
     GuardarColetivo
@@ -244,6 +251,7 @@ function Entrar($nome) {
 function AcrescentarCamada($dados, $ip) {
     $peca = @($coletivo.pecas | Where-Object { $_.id -eq [string]$dados.peca })
     if (-not $peca.Count) { return $null }
+    if ($peca[0].ativa -eq $false) { return $null }
     $n = $coletivo.camadas.Count + 1
     $codigo = [string]$dados.codigo
     if ($codigo.Length -gt 20000) { return $null }
@@ -257,6 +265,31 @@ function AcrescentarCamada($dados, $ip) {
     $coletivo.versao++
     GuardarColetivo
     return $camada
+}
+
+# Tirar uma equipe da tela.
+#   'sair'    a peça sai da tela e deixa de receber planos; as camadas dela ficam.
+#             Quem entrar de novo com o mesmo nome recupera a peça.
+#   'remover' a peça e todas as camadas dela somem (só o professor).
+function TirarEquipe([string]$pecaId, [string]$como, [bool]$local, [string]$pedinte) {
+    $alvo = @($coletivo.pecas | Where-Object { $_.id -eq $pecaId })
+    if (-not $alvo.Count) { return @{ erro = 'essa equipe não está na tela' } }
+    if (-not $local -and $pedinte -ne $pecaId) { return @{ erro = 'só a própria equipe (ou o professor) pode tirá-la da tela' } }
+    if ($como -eq 'remover') {
+        if (-not $local) { return @{ erro = 'só o professor pode remover uma equipe com as camadas' } }
+        $antes = $coletivo.camadas.Count
+        $coletivo.pecas = @($coletivo.pecas | Where-Object { $_.id -ne $pecaId })
+        $coletivo.camadas = @($coletivo.camadas | Where-Object { $_.peca -ne $pecaId })
+        $k = 0
+        foreach ($c in $coletivo.camadas) { $k++; $c.n = $k }
+        $coletivo.versao++
+        GuardarColetivo
+        return @{ nome = $alvo[0].nome; camadas = ($antes - $coletivo.camadas.Count) }
+    }
+    if ($null -eq $alvo[0].PSObject.Properties['ativa']) { $alvo[0] | Add-Member -NotePropertyName ativa -NotePropertyValue $false -Force } else { $alvo[0].ativa = $false }
+    $coletivo.versao++
+    GuardarColetivo
+    return @{ nome = $alvo[0].nome; camadas = 0 }
 }
 
 function RemoverCamada([int]$n, [string]$pecaId, [bool]$local) {
@@ -356,6 +389,18 @@ function Atender($ctx) {
         if ($erro) { Responder $ctx 403 'application/json; charset=utf-8' (ConvertTo-Json @{ ok = $false; erro = $erro } -Compress); return }
         Write-Host ('  {0}  {1,-15} removeu a camada {2}' -f (Get-Date -Format 'HH:mm:ss'), $ip, $dados.n) -ForegroundColor DarkYellow
         Registrar ([pscustomobject]@{ evento = 'removida'; ip = $ip; n = $dados.n })
+        Responder $ctx 200 'application/json; charset=utf-8' (ConvertTo-Json -InputObject @{ ok = $true; versao = $coletivo.versao } -Compress)
+    }
+    elseif ($req.HttpMethod -eq 'POST' -and $caminho -eq '/coletivo/tirar') {
+        $dados = $null; try { $dados = (LerCorpo $req) | ConvertFrom-Json } catch { }
+        if (-not $dados) { Responder $ctx 400 'application/json; charset=utf-8' '{"ok":false,"erro":"pedido inválido"}'; return }
+        $como = if ([string]$dados.como -eq 'remover') { 'remover' } else { 'sair' }
+        $r = TirarEquipe ([string]$dados.peca) $como $req.IsLocal ([string]$dados.eu)
+        if ($r.erro) { Responder $ctx 403 'application/json; charset=utf-8' (ConvertTo-Json @{ ok = $false; erro = $r.erro } -Compress); return }
+        $quem = if ([string]$dados.eu -eq [string]$dados.peca) { 'pela própria equipe' } else { 'pelo professor' }
+        $texto = if ($como -eq 'remover') { "removida com $($r.camadas) camadas" } else { 'saiu da tela (camadas mantidas)' }
+        Write-Host ('  {0}  {1,-15} equipe "{2}" {3}, {4}' -f (Get-Date -Format 'HH:mm:ss'), $ip, $r.nome, $texto, $quem) -ForegroundColor DarkYellow
+        Registrar ([pscustomobject]@{ evento = ('equipe-' + $como); ip = $ip; peca = $r.nome; camadas = $r.camadas; por = $quem })
         Responder $ctx 200 'application/json; charset=utf-8' (ConvertTo-Json -InputObject @{ ok = $true; versao = $coletivo.versao } -Compress)
     }
     elseif ($req.HttpMethod -eq 'POST' -and $caminho -eq '/coletivo/zerar') {

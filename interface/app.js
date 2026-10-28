@@ -88,7 +88,8 @@ var TELA = globalThis.TELA = globalThis.TELA || {};
   function renderTopo() {
     const p = peca();
     const st = e();
-    const quem = A.modo === 'projetor' ? `<b>${st.ordem.length}</b> ${st.ordem.length === 1 ? 'peça' : 'peças'} na tela coletiva` : `${esc(p.nome)} em (${p.x}, ${p.y}), olhando para ${T.nomeAngulo(p.ang)}`;
+    const ativas = st.ordem.filter(id => st.pecas[id].ativa !== false).length;
+    const quem = A.modo === 'projetor' ? `<b>${ativas}</b> ${ativas === 1 ? 'equipe' : 'equipes'} na tela coletiva` : `${esc(p.nome)} em (${p.x}, ${p.y}), olhando para ${T.nomeAngulo(p.ang)}`;
     $('topoMeio').innerHTML = `
       ${A.modo !== 'individual' ? `<span class="pilula pilula-modo">${A.modo === 'projetor' ? 'Projetor' : 'Tela coletiva'}</span>` : ''}
       <span class="topo-item"><b>${st.camadas.length}</b> ${st.camadas.length === 1 ? 'camada' : 'camadas'}</span>
@@ -105,6 +106,18 @@ var TELA = globalThis.TELA = globalThis.TELA || {};
   // ---------------------------------------------------------------
   function renderLateral() {
     if (A.modo === 'projetor') { renderLateralProjetor(); return; }
+    if (A.modo === 'coletivo' && A.eu && e().pecas[A.eu] && e().pecas[A.eu].ativa === false) {
+      $('lateral').innerHTML = `<section class="cartao cartao-fora"><header class="cartao-cabeca"><h2>A equipe saiu da tela</h2></header>
+        <p>O professor retirou a peça de vocês da tela coletiva. As camadas que vocês fizeram continuam lá.</p>
+        <div class="fila-botoes"><button type="button" class="botao botao-primario" data-acao="entrarDeNovo">Entrar de novo</button></div></section>`;
+      return;
+    }
+    if (A.modo === 'coletivo' && A.eu && A.versao && !e().pecas[A.eu]) {
+      $('lateral').innerHTML = `<section class="cartao cartao-fora"><header class="cartao-cabeca"><h2>A equipe foi removida</h2></header>
+        <p>O professor removeu a equipe de vocês e as camadas dela. Para continuar, entrem de novo, com o mesmo nome ou outro.</p>
+        <div class="fila-botoes"><button type="button" class="botao botao-primario" data-acao="entrarDeNovo">Entrar de novo</button></div></section>`;
+      return;
+    }
     const r = A.rascunho;
     let h = '';
     h += `<section class="cartao cartao-pedido">
@@ -168,6 +181,8 @@ var TELA = globalThis.TELA = globalThis.TELA || {};
         <dt>Caneta</dt><dd>${p.caneta ? 'baixada (pinta)' : 'levantada'}</dd>
       </dl>
       <p class="cartao-nota">Shift + clique numa célula faz a peça saltar até lá (vira uma camada, como tudo).</p>
+      ${A.modo === 'coletivo' && A.eu ? `<div class="fila-botoes"><button type="button" class="botao-texto perigo" data-acao="tirarEquipe" data-como="sair" data-peca="${A.eu}">Sair da tela</button></div>
+      <p class="cartao-nota">Ao sair, a peça some da tela, mas as camadas da equipe ficam. Entrando de novo com o mesmo nome, vocês recuperam a peça.</p>` : ''}
     </section>`;
     if (coletivo()) h += outrasPecasHtml();
     $('lateral').innerHTML = h;
@@ -194,7 +209,7 @@ var TELA = globalThis.TELA = globalThis.TELA || {};
 
   function outrasPecasHtml() {
     const st = e();
-    const outras = st.ordem.filter(id => id !== A.eu).map(id => st.pecas[id]);
+    const outras = st.ordem.filter(id => id !== A.eu && st.pecas[id].ativa !== false).map(id => st.pecas[id]);
     if (!outras.length) return '';
     return `<section class="cartao"><header class="cartao-cabeca"><h2>As outras peças</h2></header>
       <ul class="lista-pecas">${outras.map(q => `<li>${pastilha(q)}<span>${esc(q.nome)}</span><small>(${q.x}, ${q.y})</small></li>`).join('')}</ul></section>`;
@@ -213,6 +228,41 @@ var TELA = globalThis.TELA = globalThis.TELA || {};
     </section>`;
   }
 
+  function equipeHtml(st, id) {
+    const q = st.pecas[id];
+    const n = st.camadas.filter(c => c.peca === id).length;
+    const fora = q.ativa === false;
+    const acoes = A.ia.professor ? `<span class="equipe-acoes">
+        ${fora ? '' : `<button type="button" class="botao-texto" data-acao="tirarEquipe" data-como="sair" data-peca="${id}">Retirar</button>`}
+        <button type="button" class="botao-texto perigo" data-acao="tirarEquipe" data-como="remover" data-peca="${id}">Remover${n ? ' com as camadas' : ''}</button></span>` : '';
+    return `<li class="${fora ? 'equipe-fora' : ''}">${pastilha(q)}<span>${esc(q.nome)}</span><small>${fora ? 'fora da tela' : `(${q.x}, ${q.y})`} · ${n} ${n === 1 ? 'camada' : 'camadas'}</small>${acoes}</li>`;
+  }
+
+  // Tira uma equipe da tela. Pede confirmação no próprio botão (um segundo clique).
+  function tirarEquipe(botao) {
+    const como = botao.dataset.como;
+    if (!botao.dataset.certeza) {
+      botao.dataset.certeza = '1';
+      botao.dataset.texto = botao.textContent;
+      botao.textContent = como === 'remover' ? 'Confirmar: apagar tudo dela?' : 'Confirmar?';
+      setTimeout(() => { if (botao.isConnected) { delete botao.dataset.certeza; botao.textContent = botao.dataset.texto; } }, 3500);
+      return;
+    }
+    fetch('/coletivo/tirar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ peca: botao.dataset.peca, como, eu: A.eu }) })
+      .then(r => r.json()).then(d => {
+        if (!d.ok) throw new Error(d.erro);
+        if (botao.dataset.peca === A.eu && A.modo === 'coletivo') { sairDaTela(); return; }
+        aviso(como === 'remover' ? 'Equipe removida, com as camadas dela.' : 'Equipe retirada da tela. As camadas dela ficam.');
+        return sincronizar(true);
+      }).catch(erro => aviso(`Não deu: ${erro.message}`));
+  }
+
+  // A própria equipe saiu: esquece o nome e volta para a pergunta inicial.
+  function sairDaTela() {
+    try { localStorage.removeItem(CHAVE_DUPLA); } catch (e) { }
+    location.reload();
+  }
+
   function renderLateralProjetor() {
     const st = e();
     const ultimas = st.camadas.slice(-6).reverse();
@@ -229,8 +279,9 @@ var TELA = globalThis.TELA = globalThis.TELA || {};
         }).join('')}</ol></section>`;
       }
     }
-    h += `<section class="cartao"><header class="cartao-cabeca"><h2>Peças</h2><span class="etiqueta">${st.ordem.length}</span></header>
-      <ul class="lista-pecas">${st.ordem.map(id => { const q = st.pecas[id]; return `<li>${pastilha(q)}<span>${esc(q.nome)}</span><small>(${q.x}, ${q.y}) · ${st.camadas.filter(c => c.peca === id).length} camadas</small></li>`; }).join('') || '<li><small>ninguém entrou ainda</small></li>'}</ul></section>`;
+    h += `<section class="cartao"><header class="cartao-cabeca"><h2>Equipes</h2><span class="etiqueta">${st.ordem.filter(id => st.pecas[id].ativa !== false).length} na tela</span></header>
+      <ul class="lista-pecas lista-equipes">${st.ordem.map(id => equipeHtml(st, id)).join('') || '<li><small>ninguém entrou ainda</small></li>'}</ul>
+      ${A.ia.professor ? '<p class="cartao-nota">Retirar: a equipe sai da tela e as camadas dela ficam; se ela entrar de novo com o mesmo nome, recupera a peça. Remover: a equipe e todas as camadas dela somem.</p>' : ''}</section>`;
     $('lateral').innerHTML = h;
   }
 
@@ -556,6 +607,8 @@ var TELA = globalThis.TELA = globalThis.TELA || {};
       const b = ev.target.closest('[data-acao]');
       if (!b || b.disabled) return;
       const acao = b.dataset.acao;
+      if (acao === 'tirarEquipe') { tirarEquipe(b); return; }
+      if (acao === 'entrarDeNovo') { location.reload(); return; }
       if (acao === 'pedir') pedir($('pedido').value);
       else if (acao === 'manual') novoRascunho({ titulo: 'Plano à mão', pedido: $('pedido') ? $('pedido').value : '', codigo: A.rascunho && A.rascunho.codigo ? A.rascunho.codigo : 'eu.cor("azul");\neu.olharPara("leste");\neu.frente(20);\n', origem: 'manual' });
       else if (acao === 'previa') verPrevia();
@@ -646,7 +699,7 @@ var TELA = globalThis.TELA = globalThis.TELA || {};
   // tela a partir delas e pergunta, de tempos em tempos, se algo mudou.
   // ---------------------------------------------------------------
   function montarDoServidor(d) {
-    const st = T.criar({ larg: d.larg, alt: d.alt, pecas: (d.pecas || []).map(p => ({ id: p.id, nome: p.nome, cor: p.cor, x: p.x, y: p.y })) });
+    const st = T.criar({ larg: d.larg, alt: d.alt, pecas: (d.pecas || []).map(p => ({ id: p.id, nome: p.nome, cor: p.cor, x: p.x, y: p.y, ativa: p.ativa !== false })) });
     st.camadas = (d.camadas || []).map((c, i) => Object.assign({}, c, { n: i + 1, escolhas: Array.isArray(c.escolhas) ? c.escolhas : [] }));
     const relatos = T.reconstruir(st);
     st.camadas.forEach((c, i) => { c.explicacao = relatos[i].explicacao; });
